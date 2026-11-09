@@ -1,0 +1,62 @@
+{
+  "steps": [
+    {
+      "hook": "status",
+      "expect": {
+        "outcome": "live"
+      }
+    },
+    {
+      "hook": "status",
+      "expect": {
+        "outcome": "live"
+      }
+    },
+    {
+      "hook": "status",
+      "expect": {
+        "outcome": "live"
+      }
+    },
+    {
+      "hook": "status",
+      "expect": {
+        "outcome": "inactive"
+      }
+    },
+    {
+      "hook": "status",
+      "expect": {
+        "outcome": "inactive"
+      }
+    }
+  ],
+  "offline": true,
+  "http": [
+    {
+      "times": 1,
+      "match": "music.youtube.com",
+      "status": 200
+    },
+    {
+      "times": 1,
+      "match": "music.youtube.com",
+      "status": 302
+    },
+    {
+      "times": 1,
+      "match": "music.youtube.com",
+      "status": 307
+    },
+    {
+      "times": 1,
+      "match": "music.youtube.com",
+      "status": 403
+    },
+    {
+      "times": 1,
+      "match": "music.youtube.com",
+      "status": 500
+    }
+  ]
+}

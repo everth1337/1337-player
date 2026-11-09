@@ -1,0 +1,9 @@
+{
+  "offline": true,
+  "http": [{ "match": "*", "status": 429 }],
+  "steps": [
+    { "hook": "download-source", "expect": { "outcome": "rate-limited", "retryAfterMs": 60000 } },
+    { "hook": "download-source", "expect": { "outcome": "rate-limited", "retryAfterMs": 60000 } },
+    { "hook": "download-source", "expect": { "outcome": "rate-limited", "retryAfterMs": 60000 } }
+  ]
+}

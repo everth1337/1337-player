@@ -1,0 +1,20 @@
+<resources>
+    <string name="player_download_channel">1337 Player · Downloads</string>
+    <string name="player_download_remaining">Remaining in queue: %1$d</string>
+    <string name="player_download_queued">Waiting in queue</string>
+    <string name="player_download_paused">Downloads paused by Android</string>
+    <string name="player_download_resume">Open 1337 Player to resume the saved queue.</string>
+    <string name="player_licenses">Licenses and source code</string>
+    <string name="player_upstream_source">Original project</string>
+    <string name="player_license_notice">1337 Player is based on Myspoti (kota-zo/myspoti) and distributed under GPL-3.0. Original copyright notices are preserved. Source and releases: https://github.com/everth1337/1337-player. Complete corresponding source for each release is provided alongside the APK in 1337-Player-source.zip. Bundled extensions retain their authorship and licenses.</string>
+    <string name="nexi_extensions_title">Offline music and J-pop</string>
+    <string name="nexi_extensions_subtitle">Two selected extensions · no separate account</string>
+    <string name="nexi_youtube_description">Looks for matching songs on YouTube Music and saves AAC/M4A. Some tracks may be unavailable.</string>
+    <string name="nexi_romanizer_description">Adds Latin readings under Japanese and Korean lyrics, offline. Readings can be imperfect; this is not a translation.</string>
+    <string name="nexi_extension_install">Install</string>
+    <string name="nexi_extension_update">Update</string>
+    <string name="nexi_extension_open">Open settings</string>
+    <string name="nexi_extension_loading">Preparing…</string>
+    <string name="nexi_romanization">Show Latin readings</string>
+    <string name="nexi_download_hint">For AAC downloads, choose the small file size in download quality. Wait for the download to finish before going offline. Music comes from the selected source, not Spotify.</string>
+</resources>

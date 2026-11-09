@@ -1,0 +1,20 @@
+<resources>
+    <string name="player_download_channel">1337 Player · Загрузки</string>
+    <string name="player_download_remaining">Осталось в очереди: %1$d</string>
+    <string name="player_download_queued">Ожидает в очереди</string>
+    <string name="player_download_paused">Android приостановил загрузки</string>
+    <string name="player_download_resume">Открой 1337 Player, чтобы продолжить сохранённую очередь.</string>
+    <string name="player_licenses">Лицензии и исходный код</string>
+    <string name="player_upstream_source">Исходный проект</string>
+    <string name="player_license_notice">1337 Player основан на Myspoti (kota-zo/myspoti) и распространяется по GPL-3.0. Исходные уведомления об авторстве сохранены. Исходники и релизы: https://github.com/everth1337/1337-player. Полные исходники каждой сборки доступны рядом с APK в архиве 1337-Player-source.zip. У встроенных расширений сохранены авторство и лицензии.</string>
+    <string name="nexi_extensions_title">Для офлайна и J-pop</string>
+    <string name="nexi_extensions_subtitle">Два выбранных расширения · без отдельного аккаунта</string>
+    <string name="nexi_youtube_description">Ищет совпадающие песни в YouTube Music и сохраняет AAC/M4A. Некоторые треки могут быть недоступны.</string>
+    <string name="nexi_romanizer_description">Добавляет чтение японских и корейских текстов латиницей, работает офлайн. Чтение бывает неточным; это не перевод.</string>
+    <string name="nexi_extension_install">Установить</string>
+    <string name="nexi_extension_update">Обновить</string>
+    <string name="nexi_extension_open">Настроить</string>
+    <string name="nexi_extension_loading">Подготовка…</string>
+    <string name="nexi_romanization">Показывать чтение латиницей</string>
+    <string name="nexi_download_hint">Для загрузок AAC выбери небольшой размер файла в качестве загрузок. Дождись завершения скачивания перед отключением сети. Музыка берётся из выбранного источника, а не из Spotify.</string>
+</resources>

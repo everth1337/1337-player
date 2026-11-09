@@ -1,0 +1,21 @@
+{
+  "id": "app.nexi.audius",
+  "name": "Nexi · Audius",
+  "version": "1.0.0",
+  "versionCode": 1,
+  "author": "Nexi",
+  "description": "Сопоставляет название, исполнителя и длительность записи Spotify с Audius. Сохраняет только записи с открытым скачиванием. Каталоги различаются, поэтому часть песен может отсутствовать.",
+  "minAppVersion": "2.4.0",
+  "category": "tools",
+  "actions": [
+    {
+      "name": "download.source",
+      "why": "Сохранение найденной записи Audius, для которой автор включил скачивание"
+    },
+    {
+      "name": "network",
+      "hosts": ["api.audius.co"],
+      "why": "Поиск записи по исполнителю, названию и длительности в каталоге Audius"
+    }
+  ]
+}
