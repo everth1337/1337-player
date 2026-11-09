@@ -207,7 +207,7 @@ dependencies {
     implementation("androidx.media3:media3-database:1.8.0")
 
     // Screenshots of the TV screens on the computer (TvScreenshotTest): Robolectric draws them, Roborazzi saves them.
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.40.1")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.40.1")
     testImplementation(platform(libs.compose.bom))
