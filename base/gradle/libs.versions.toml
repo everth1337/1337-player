@@ -19,7 +19,7 @@ serialization = "1.11.0"
 desugaring = "2.1.5"
 glance = "1.2.0"
 coroutines = "1.11.0"
-junit = "5.13.4"
+junit = "6.1.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
