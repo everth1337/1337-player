@@ -37,7 +37,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@7ca78c16c887dc6c5f36fd6d0cb0f5c23d940e69 # v6
       - name: Regression tests
         working-directory: base
-        run: ./gradlew :app:testDebugUnitTest --tests '*UpdateCheckerTest' --tests '*OfflineDownloaderTest' --tests '*TrackOrderTest' -Pabis=arm64-v8a
+        run: ./gradlew :app:testDebugUnitTest --tests '*UpdateCheckerTest' --tests '*OfflineDownloaderTest' --tests '*TrackOrderTest' --tests '*TrackSectionsTest' -Pabis=arm64-v8a
       - name: Extension request-limit regressions
         run: node nexi-youtube/scripts/nexi-rate-limit-test.cjs
       - name: Restore signing key

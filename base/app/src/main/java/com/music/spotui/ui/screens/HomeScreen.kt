@@ -239,6 +239,9 @@ fun HomeFeedContent(navController: NavController, feed: HomeFeedModel, facet: St
                 HomeShortcutGrid(navController, tiles)
             }
         }
+        if (facet.isEmpty() || facet == "music-chip") item(key = "home:spotify-dj") {
+            com.music.spotui.ui.components.SpotifyDjButton(Modifier.padding(horizontal = 16.dp))
+        }
         items(carousels.size, key = { carouselKeys[it] }) { i ->
             HomeFeedSection(navController, carousels[i])
         }

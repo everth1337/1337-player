@@ -92,6 +92,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import app.myspoti.engine.R
+import com.music.spotui.data.local.ArtistGenres
+import com.music.spotui.ui.components.SectionTrack
+import com.music.spotui.ui.components.TrackSection
+import com.music.spotui.ui.components.TrackSections
+import com.music.spotui.ui.components.matches
 import app.myspoti.host.android.MyspotiRuntime
 import com.music.spotui.data.api.Response
 import com.music.spotui.data.entity.ContextPageModel
@@ -390,9 +395,14 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     // (a search letter, the "×" of the search), and keys remembered apart from them were one list
     // behind (a list that grows on the "×" ran out of keys: a crash). Rows that move are keyed by
     // their own id, which goes with them wherever they are put.
+    var section by remember(p.uri) { mutableStateOf<TrackSection?>(null) }
+    val tags by ArtistGenres.tags.collectAsState()
     val shown by remember(p, find, sort, reordering) {
         derivedStateOf {
-            val found = if (findable) all.filter { matchesFind(find, it.title, it.singer, it.album) } else all
+            val inSection = section?.let { picked ->
+                all.filter { picked.matches(it.singer, it.album, tags) }
+            } ?: all
+            val found = if (findable) inSection.filter { matchesFind(find, it.title, it.singer, it.album) } else all
             withRowKeys(if (findable) sort.apply(found) else found) { if (reordering) PlaylistReorder.key(it) else it.id.toString() }
         }
     }
@@ -419,7 +429,10 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
         } else {
             SmartShuffle.on.value = p.uri
             Toast.makeText(context, context.getString(R.string.immersive_detail_smart_shuffle_on), Toast.LENGTH_SHORT).show()
-            if (isThisContext) vm.playSmart(p, p.tracks.firstOrNull { it.id == currentSongId })
+            if (isThisContext) {
+                val current = rows.firstOrNull { it.id == currentSongId }
+                if (p.type == "liked") playLiked(current) else vm.playSmart(p, current)
+            }
         }
     }
     // What the Shuffle pill does: start the list shuffled from a random song, and every tap again
@@ -523,6 +536,14 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                     ),
                     modifier = Modifier.padding(horizontal = Immersive.Gutter, vertical = 8.dp),
                 )
+            }
+            if (p.type == "liked" && all.isNotEmpty()) item(key = "track-sections") {
+                val choices = remember(all) { all.map { SectionTrack(it.singer, it.album) } }
+                TrackSections(choices, tags, section, onSelect = { section = it; restartLiked = true },
+                    modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                if (section != null && rows.isEmpty() && find.isBlank()) {
+                    Text(stringResource(R.string.track_sections_empty), modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                }
             }
             if (rows.isEmpty() && find.isNotBlank()) item(key = "find-empty") {
                 ImmersiveMessageState(stringResource(R.string.assisted_curation_search_empty_view_no_result_title, find.trim()))

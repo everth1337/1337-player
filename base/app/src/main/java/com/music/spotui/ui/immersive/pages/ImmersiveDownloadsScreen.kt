@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
@@ -42,6 +43,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import app.myspoti.engine.R
+import com.music.spotui.data.local.ArtistGenres
+import com.music.spotui.ui.components.SectionTrack
+import com.music.spotui.ui.components.TrackSection
+import com.music.spotui.ui.components.TrackSections
+import com.music.spotui.ui.components.matches
 import com.music.spotui.data.entity.SongsModel
 import com.music.spotui.data.offline.OfflineCollections
 import com.music.spotui.data.offline.OfflineDownloader
@@ -79,10 +85,17 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
     val context = LocalContext.current
     val title = stringResource(R.string.collection_downloaded)
     var order by remember { mutableStateOf(TrackOrder.load(context, TrackOrder.DOWNLOADS)) }
+    var section by remember { mutableStateOf<TrackSection?>(null) }
+    val tags by ArtistGenres.tags.collectAsState()
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var restart by rememberSaveable { mutableStateOf(false) }
     val tracks by remember {
         derivedStateOf { order.downloads(OfflineStore.tracks.values.sortedBy { it.trackId }) }
+    }
+    val inSection by remember {
+        derivedStateOf {
+            section?.let { picked -> tracks.filter { picked.matches(it.artist, it.album, tags) } } ?: tracks
+        }
     }
     val waiting by remember {
         derivedStateOf { OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) } }
@@ -100,7 +113,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
     var find by rememberSaveable { mutableStateOf("") }
     val shown by remember {
         derivedStateOf {
-            if (find.isBlank()) tracks else tracks.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
+            if (find.isBlank()) inSection else inSection.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
         }
     }
     val shownWaiting by remember {
@@ -187,6 +200,14 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                         restart = true
                         TrackOrder.save(context, TrackOrder.DOWNLOADS, it)
                     }, modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                }
+                if (tracks.isNotEmpty()) item(key = "downloads:sections") {
+                    val choices = remember(tracks) { tracks.map { SectionTrack(it.artist, it.album, !it.isEpisode) } }
+                    TrackSections(choices, tags, section, onSelect = { section = it; restart = true },
+                        modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                    if (section != null && inSection.isEmpty()) {
+                        Text(stringResource(R.string.track_sections_empty), modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                    }
                 }
                 if (shownWaiting.isNotEmpty()) item(key = "downloads:queue") {
                     NoticeCard(

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -57,6 +58,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import app.myspoti.engine.R
+import com.music.spotui.data.local.ArtistGenres
+import com.music.spotui.ui.components.SectionTrack
+import com.music.spotui.ui.components.TrackSection
+import com.music.spotui.ui.components.TrackSections
+import com.music.spotui.ui.components.matches
 import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.CrossFade
 import com.bumptech.glide.integration.compose.GlideImage
@@ -79,6 +85,8 @@ fun DownloadsScreen(navController: NavController) {
     val context = LocalContext.current
     val title = stringResource(R.string.collection_downloaded)
     var order by remember { mutableStateOf(TrackOrder.load(context, TrackOrder.DOWNLOADS)) }
+    var section by remember { mutableStateOf<TrackSection?>(null) }
+    val tags by ArtistGenres.tags.collectAsState()
     var showQueue by rememberSaveable { mutableStateOf(false) }
     var showLists by rememberSaveable { mutableStateOf(false) }
     var restart by rememberSaveable { mutableStateOf(false) }
@@ -91,6 +99,11 @@ fun DownloadsScreen(navController: NavController) {
                 val mine = tracks.filter { it.trackId in c.trackIds }
                 if (mine.isEmpty()) null else c to mine
             }.sortedByDescending { (_, mine) -> mine.maxOf { it.addedAt } }
+        }
+    }
+    val inSection by remember {
+        derivedStateOf {
+            section?.let { picked -> tracks.filter { picked.matches(it.artist, it.album, tags) } } ?: tracks
         }
     }
     val waiting by remember { derivedStateOf { OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) } } }
@@ -110,9 +123,9 @@ fun DownloadsScreen(navController: NavController) {
         com.music.spotui.ui.components.SongOptionsSheet(song = sel, navController = navController, context = context, onDismiss = { menuSong = null })
     }
     fun play(index: Int, shuffle: Boolean = false) {
-        if (tracks.isEmpty()) return
+        if (index !in inSection.indices) return
         restart = false
-        LocalPlayer.play(tracks.map(OfflineStore::toLocalTrack), index, shuffle = shuffle,
+        LocalPlayer.play(inSection.map(OfflineStore::toLocalTrack), index, shuffle = shuffle,
             context = title, contextUri = TrackOrder.DOWNLOADS, includeSpotifyQueue = false)
     }
 
@@ -147,7 +160,7 @@ fun DownloadsScreen(navController: NavController) {
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Spacer(Modifier.weight(1f))
                         Icon(painterResource(R.drawable.ic_player_shuffle), stringResource(R.string.play_mode_item_shuffle_title), tint = AppText,
-                            modifier = Modifier.size(28.dp).pressable { if (tracks.isNotEmpty()) play(tracks.indices.random(), shuffle = true) })
+                            modifier = Modifier.size(28.dp).pressable { if (inSection.isNotEmpty()) play(inSection.indices.random(), shuffle = true) })
                         Spacer(Modifier.width(20.dp))
                         Box(
                             contentAlignment = Alignment.Center,
@@ -173,6 +186,14 @@ fun DownloadsScreen(navController: NavController) {
                     restart = true
                     TrackOrder.save(context, TrackOrder.DOWNLOADS, it)
                 }, modifier = Modifier.padding(horizontal = 16.dp))
+            }
+            if (tracks.isNotEmpty()) item(key = "downloads:sections") {
+                val choices = remember(tracks) { tracks.map { SectionTrack(it.artist, it.album, !it.isEpisode) } }
+                TrackSections(choices, tags, section, onSelect = { section = it; restart = true },
+                    modifier = Modifier.padding(horizontal = 16.dp))
+                if (section != null && inSection.isEmpty()) {
+                    Text(stringResource(R.string.track_sections_empty), modifier = Modifier.padding(horizontal = 16.dp))
+                }
             }
             if (waiting.isNotEmpty()) item(key = "downloads:queue") {
                 androidx.compose.material3.TextButton(onClick = { showQueue = !showQueue }, modifier = Modifier.padding(horizontal = 16.dp)) {
@@ -281,7 +302,7 @@ fun DownloadsScreen(navController: NavController) {
                     }
                 }
             }
-            itemsIndexed(tracks, key = { _, t -> t.trackId }) { i, t ->
+            itemsIndexed(inSection, key = { _, t -> t.trackId }) { i, t ->
                 val current = LocalPlayer.active.value && np.uri == "local:${OfflineStore.localIdOf(t.trackId)}"
                 com.music.spotui.ui.components.SwipeToRemove(t.trackId, onRemove = {
                     val gone = com.music.spotui.data.offline.OfflineCollections.removeSong(t.trackId)

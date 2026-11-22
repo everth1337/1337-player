@@ -171,6 +171,9 @@ fun ImmersiveHomeScreen(navController: NavController) {
                     select = homeViewModel::selectFacet,
                 )
             }
+            if (facet.isEmpty() || facet == "music-chip") item(key = "home:spotify-dj") {
+                com.music.spotui.ui.components.SpotifyDjButton(Modifier.padding(horizontal = Immersive.Gutter))
+            }
             when {
                 feed != null && feed.sections.isNotEmpty() -> {
                     shortcuts?.let { tiles ->

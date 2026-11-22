@@ -96,6 +96,11 @@ import com.music.spotui.di.SongPlayer
 import com.music.spotui.ui.components.Loader
 import com.music.spotui.ui.navigation.artistRoute
 import app.myspoti.engine.R
+import com.music.spotui.data.local.ArtistGenres
+import com.music.spotui.ui.components.SectionTrack
+import com.music.spotui.ui.components.TrackSection
+import com.music.spotui.ui.components.TrackSections
+import com.music.spotui.ui.components.matches
 import com.music.spotui.data.offline.OfflineStore
 import com.music.spotui.data.local.LocalFileMatch.isDeviceFile
 import kotlinx.coroutines.Dispatchers
@@ -771,9 +776,14 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
     // the rows in one derived state: the list re-reads its rows outside composition (a like, a
     // search letter), and keys remembered apart from them could be one list behind (a crash).
     // Rows that move are keyed by their own id, which goes with them wherever they are put.
+    var section by remember(p.uri) { mutableStateOf<TrackSection?>(null) }
+    val tags by ArtistGenres.tags.collectAsState()
     val shown by remember(p, find, sort, reordering) {
         derivedStateOf {
-            val found = if (findable) all.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.singer, it.album) } else all
+            val inSection = section?.let { picked ->
+                all.filter { picked.matches(it.singer, it.album, tags) }
+            } ?: all
+            val found = if (findable) inSection.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.singer, it.album) } else all
             com.music.spotui.ui.components.withRowKeys(if (findable) sort.apply(found) else found) { if (reordering) PlaylistReorder.key(it) else it.id.toString() }
         }
     }
@@ -1041,7 +1051,10 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                                     shuffle && (p.type == "playlist" || p.type == "liked") -> {
                                         SmartShuffle.on.value = p.uri
                                         android.widget.Toast.makeText(context, context.getString(R.string.smart_shuffle_on), android.widget.Toast.LENGTH_SHORT).show()
-                                        if (isThisContext) vm.playSmart(p, p.tracks.firstOrNull { it.id == currentSongId })
+                                        if (isThisContext) {
+                                            val current = rows.firstOrNull { it.id == currentSongId }
+                                            if (p.type == "liked") playLiked(current) else vm.playSmart(p, current)
+                                        }
                                     }
                                     else -> playerVm.updateShuffleState(!shuffle)
                                 }
@@ -1106,6 +1119,14 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                     Modifier.weight(1f),
                 )
             }
+            }
+        }
+        if (p.type == "liked" && all.isNotEmpty()) item(key = "track-sections") {
+            val choices = remember(all) { all.map { SectionTrack(it.singer, it.album) } }
+            TrackSections(choices, tags, section, onSelect = { section = it; restartLiked = true },
+                modifier = Modifier.padding(horizontal = 16.dp))
+            if (section != null && rows.isEmpty() && find.isBlank()) {
+                Text(stringResource(R.string.track_sections_empty), modifier = Modifier.padding(horizontal = 16.dp))
             }
         }
         if (shown.first.isEmpty() && find.isNotBlank()) item(key = "find-empty") {
