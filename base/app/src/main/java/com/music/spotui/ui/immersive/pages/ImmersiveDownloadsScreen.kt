@@ -24,6 +24,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,6 +65,8 @@ import com.music.spotui.ui.immersive.shell.ImmersiveTopBar
 import com.music.spotui.ui.immersive.shell.immersiveHazeSource
 import com.music.spotui.ui.immersive.shell.immersiveTopContentPadding
 import com.music.spotui.ui.navigation.Routes
+import com.music.spotui.ui.screens.DownloadSortButton
+import com.music.spotui.ui.screens.TrackOrder
 
 /**
  * "Downloaded" of the Immersive look, replacing the Classic `DownloadsScreen`: a large title with
@@ -74,28 +78,44 @@ import com.music.spotui.ui.navigation.Routes
 fun ImmersiveDownloadsScreen(navController: NavController) {
     val context = LocalContext.current
     val title = stringResource(R.string.collection_downloaded)
-    // Snapshot reads: the list follows downloads as they finish.
-    val tracks = OfflineStore.tracks.values.sortedByDescending { it.addedAt }
-    val waiting = OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) }
+    var order by remember { mutableStateOf(TrackOrder.load(context, TrackOrder.DOWNLOADS)) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    var restart by rememberSaveable { mutableStateOf(false) }
+    val tracks by remember {
+        derivedStateOf { order.downloads(OfflineStore.tracks.values.sortedBy { it.trackId }) }
+    }
+    val waiting by remember {
+        derivedStateOf { OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) } }
+    }
     // Only queued or running songs can be stopped; a failed one has nothing left to cancel.
     val stoppable = waiting.count {
         val s = OfflineStore.status[it.trackId]
         s == OfflineStatus.Queued || s is OfflineStatus.Downloading
     }
     val np by SongPlayer.nowPlaying
-    val playingHere = LocalPlayer.active.value && LocalPlayer.contextName == title
+    val playingHere = LocalPlayer.active.value && LocalPlayer.contextUri == TrackOrder.DOWNLOADS && !restart
     var menuSong by remember { mutableStateOf<SongsModel?>(null) }
     // Reported: the search of the Immersive look found songs in the whole catalogue, not here.
     // The page's own find field, as Local Files has.
-    var find by remember { mutableStateOf("") }
-    val shown = if (find.isBlank()) tracks else tracks.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
-    val shownWaiting = if (find.isBlank()) waiting else waiting.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
+    var find by rememberSaveable { mutableStateOf("") }
+    val shown by remember {
+        derivedStateOf {
+            if (find.isBlank()) tracks else tracks.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
+        }
+    }
+    val shownWaiting by remember {
+        derivedStateOf {
+            if (find.isBlank()) waiting else waiting.filter { com.music.spotui.ui.components.matchesFind(find, it.title, it.artist, it.album) }
+        }
+    }
     menuSong?.let { sel ->
         ImmersiveSongOptionsSheet(song = sel, navController = navController, context = context, onDismiss = { menuSong = null })
     }
     fun play(index: Int, shuffle: Boolean = false) {
-        if (tracks.isEmpty()) return
-        LocalPlayer.play(tracks.map(OfflineStore::toLocalTrack), index, shuffle = shuffle, context = title)
+        if (index !in shown.indices) return
+        restart = false
+        LocalPlayer.play(shown.map(OfflineStore::toLocalTrack), index, shuffle = shuffle,
+            context = title, contextUri = TrackOrder.DOWNLOADS, includeSpotifyQueue = false)
     }
 
     val listState = rememberLazyListState()
@@ -141,7 +161,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                         modifier = Modifier.padding(horizontal = Immersive.Gutter).padding(bottom = 14.dp),
                     )
                 }
-                if (tracks.isNotEmpty()) item(key = "downloads:buttons") {
+                if (shown.isNotEmpty()) item(key = "downloads:buttons") {
                     ImmersivePlayShuffleButtons(
                         onPlay = {
                             when {
@@ -150,19 +170,32 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                                 else -> play(0)
                             }
                         },
-                        onShuffle = { play(tracks.indices.random(), shuffle = true) },
+                        onShuffle = { play(shown.indices.random(), shuffle = true) },
                         modifier = Modifier.padding(bottom = 14.dp),
                     )
                 }
-                if (tracks.isNotEmpty()) item(key = "downloads:find") {
+                if (tracks.isNotEmpty() || waiting.isNotEmpty()) item(key = "downloads:find") {
                     com.music.spotui.ui.immersive.components.ImmersiveSearchField(
-                        query = find, onQueryChange = { find = it }, onSubmit = {},
+                        query = find, onQueryChange = { find = it; restart = true }, onSubmit = {},
                         placeholder = stringResource(R.string.immersive_detail_find),
                         modifier = Modifier.padding(horizontal = Immersive.Gutter, vertical = 6.dp),
                     )
                 }
-                // No extension gives download files: say it where downloads would fail.
-                if (!com.music.spotui.extensions.Extensions.hasDownloadSource()) item(key = "source") {
+                if (tracks.isNotEmpty()) item(key = "downloads:sort") {
+                    DownloadSortButton(order, onChange = {
+                        order = it
+                        restart = true
+                        TrackOrder.save(context, TrackOrder.DOWNLOADS, it)
+                    }, modifier = Modifier.padding(horizontal = Immersive.Gutter))
+                }
+                if (shownWaiting.isNotEmpty()) item(key = "downloads:queue") {
+                    NoticeCard(
+                        title = stringResource(R.string.player_download_queue_title, shownWaiting.size),
+                        detail = null,
+                        onClick = { showQueue = !showQueue },
+                    )
+                }
+                if (tracks.isEmpty() && !com.music.spotui.extensions.Extensions.hasDownloadSource()) item(key = "source") {
                     NoticeCard(
                         title = stringResource(R.string.downloads_need_source),
                         detail = null,
@@ -170,7 +203,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                     )
                 }
                 // One tap empties the queue; the songs already downloaded stay untouched.
-                if (stoppable > 0) item(key = "stop_all") {
+                if (showQueue && stoppable > 0) item(key = "stop_all") {
                     NoticeCard(
                         title = stringResource(R.string.downloads_stop_all_title),
                         detail = stringResource(R.string.downloads_stop_all_detail),
@@ -179,7 +212,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                     )
                 }
                 // Songs still on their way (or that could not be downloaded).
-                items(shownWaiting, key = { "w:" + it.trackId }) { r ->
+                if (showQueue) items(shownWaiting, key = { "w:" + it.trackId }) { r ->
                     val status = OfflineStore.status[r.trackId]
                     val line = when (status) {
                         OfflineStatus.Queued -> stringResource(R.string.player_download_queued)
@@ -212,7 +245,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                         },
                     )
                 }
-                if (shown.isEmpty() && find.isNotBlank()) item(key = "downloads:find-empty") {
+                if (shown.isEmpty() && shownWaiting.isEmpty() && find.isNotBlank()) item(key = "downloads:find-empty") {
                     com.music.spotui.ui.immersive.components.ImmersiveMessageState(stringResource(R.string.assisted_curation_search_empty_view_no_result_title, find.trim()))
                 }
                 itemsIndexed(shown, key = { _, t -> t.trackId }) { i, t ->
@@ -231,8 +264,7 @@ fun ImmersiveDownloadsScreen(navController: NavController) {
                                 song = song,
                                 playing = current && SongPlayer.isPlaying(),
                                 current = current,
-                                // The whole list plays from this song, even when it is filtered.
-                                onClick = { play(tracks.indexOf(t).coerceAtLeast(0)) },
+                                onClick = { play(i) },
                                 onMore = { menuSong = song },
                             )
                         }

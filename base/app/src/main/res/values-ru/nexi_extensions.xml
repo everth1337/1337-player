@@ -2,6 +2,10 @@
     <string name="player_download_channel">1337 Player · Загрузки</string>
     <string name="player_download_remaining">Осталось в очереди: %1$d</string>
     <string name="player_download_queued">Ожидает в очереди</string>
+    <string name="track_sort_downloaded">Дата скачивания</string>
+    <string name="player_sort_label">Сортировка: %1$s</string>
+    <string name="player_sort_reverse">Обратный порядок</string>
+    <string name="player_download_queue_title">Очередь загрузок (%1$d)</string>
     <string name="player_download_paused">Android приостановил загрузки</string>
     <string name="player_download_resume">Открой 1337 Player, чтобы продолжить сохранённую очередь.</string>
     <string name="player_licenses">Лицензии и исходный код</string>

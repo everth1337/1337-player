@@ -36,7 +36,7 @@ APK: `base/app/build/outputs/apk/release/app-release.apk`. Версия, код 
 
 ```sh
 cd base
-./gradlew :app:testDebugUnitTest --tests '*UpdateCheckerTest' --tests '*OfflineDownloaderTest' -Pabis=arm64-v8a
+./gradlew :app:testDebugUnitTest --tests '*UpdateCheckerTest' --tests '*OfflineDownloaderTest' --tests '*TrackOrderTest' -Pabis=arm64-v8a
 cd ..
 node nexi-youtube/scripts/nexi-rate-limit-test.cjs
 ```

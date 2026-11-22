@@ -2,6 +2,10 @@
     <string name="player_download_channel">1337 Player · Downloads</string>
     <string name="player_download_remaining">Remaining in queue: %1$d</string>
     <string name="player_download_queued">Waiting in queue</string>
+    <string name="track_sort_downloaded">Download date</string>
+    <string name="player_sort_label">Sort: %1$s</string>
+    <string name="player_sort_reverse">Reverse order</string>
+    <string name="player_download_queue_title">Download queue (%1$d)</string>
     <string name="player_download_paused">Downloads paused by Android</string>
     <string name="player_download_resume">Open 1337 Player to resume the saved queue.</string>
     <string name="player_licenses">Licenses and source code</string>

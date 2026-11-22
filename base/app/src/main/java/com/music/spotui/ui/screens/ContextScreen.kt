@@ -96,6 +96,8 @@ import com.music.spotui.di.SongPlayer
 import com.music.spotui.ui.components.Loader
 import com.music.spotui.ui.navigation.artistRoute
 import app.myspoti.engine.R
+import com.music.spotui.data.offline.OfflineStore
+import com.music.spotui.data.local.LocalFileMatch.isDeviceFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -494,6 +496,25 @@ class ContextViewModel(
         viewModelScope.launch { SmartShuffle.start(p, first) }
     }
 
+    /** Start from the ordered search results. While offline, ignore tracks without local audio. */
+    fun playLiked(p: ContextPageModel, rows: List<SongsModel>, picked: SongsModel? = null, shuffle: Boolean = false) {
+        val app = Graph.app
+        val offline = com.music.spotui.data.DataSaver.active || !OfflineStore.isOnline(app)
+        val playable = if (offline) rows.filter { OfflineStore.isDownloaded(it.spotifyTrackId) || it.isDeviceFile } else rows
+        if (offline && (playable.isEmpty() || picked != null && picked !in playable)) {
+            android.widget.Toast.makeText(app, app.getString(R.string.offline_only_downloaded, playable.size, rows.size),
+                android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val page = p.copy(tracks = rows)
+        if (!offline && SmartShuffle.on.value == p.uri) {
+            playSmart(page, picked)
+            return
+        }
+        val first = picked ?: if (shuffle) playable.randomOrNull() else playable.firstOrNull()
+        if (first != null) play(page, first)
+    }
+
     fun play(p: ContextPageModel, song: SongsModel, sort: TrackOrder = TrackOrder()) {
         // Local files of the playlist (Spotify holds their tags only): one found on this device
         // plays from there, with the other such files of the list; one not found cannot play,
@@ -530,7 +551,8 @@ class ContextViewModel(
             val at = local.indexOfFirst { it.trackId == song.spotifyTrackId }.coerceAtLeast(0)
             if (limited && local.size < p.tracks.size)
                 android.widget.Toast.makeText(app, app.getString(R.string.offline_only_downloaded, local.size, p.tracks.size), android.widget.Toast.LENGTH_SHORT).show()
-            com.music.spotui.di.LocalPlayer.play(local.map(store::toLocalTrack), at, shuffle = state.shuffle.value, context = p.name, contextUri = p.uri)
+            com.music.spotui.di.LocalPlayer.play(local.map(store::toLocalTrack), at, shuffle = state.shuffle.value,
+                context = p.name, contextUri = p.uri, includeSpotifyQueue = !limited && p.type != "liked")
             return
         }
         // An extension that gives songs' audio (audio-source): the list plays in the local
@@ -550,10 +572,11 @@ class ContextViewModel(
         // B26: keep the list's own name — the player header falls back to it when Spotify's
         // context label comes back blank (it then showed the album's name).
         SongPlayer.registerContextName(p.uri, p.name)
-        if (p.type == "liked" || p.type == "liked-artist") SongPlayer.registerLikedSongs(p.tracks.map { it.url })
+        // The API owns the full liked-song cache. A filtered play request must not replace it.
         // Sorted by the user: Spotify plays the list in that order, not the playlist's. An
         // artist's liked songs are a part of Liked Songs: always given, so only they play.
-        val order = if (sort.isCustom && p.type != "liked-artist") null else sort.apply(p.tracks).filter { it.spotifyTrackId.isNotBlank() }.map { "spotify:track:${it.spotifyTrackId}" }
+        val order = if (sort.isCustom && p.type != "liked-artist" && p.type != "liked") null
+        else sort.apply(p.tracks).filter { it.spotifyTrackId.isNotBlank() }.map { "spotify:track:${it.spotifyTrackId}" }
         // Myspoti's shuffle (an option): with shuffle on, every song of the list once, in an order of its own.
         if (com.music.spotui.di.AppShuffle.play(p, song, order)) {
             state.updateSongState(song.coverUri, song.title, song.singer, true, song.id, 0, song.album)
@@ -599,7 +622,8 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
     val playing = playerVm.currentSongPlayingState.value
     val shuffle = playerVm.shuffleState.value
     val np by SongPlayer.nowPlaying
-    val isThisContext = np.contextUri == p.uri || ((p.type == "liked" || p.type == "liked-artist") && np.contextUri.contains(":collection"))
+    var restartLiked by remember(p.uri) { mutableStateOf(false) }
+    val isThisContext = !restartLiked && (np.contextUri == p.uri || ((p.type == "liked" || p.type == "liked-artist") && np.contextUri.contains(":collection")))
     val saved by vm.savedUris
     val contextSaved by vm.contextSaved
 
@@ -754,6 +778,11 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
         }
     }
     val rows = shown.first
+    fun playLiked(picked: SongsModel? = null, shuffled: Boolean = shuffle) {
+        if (rows.isEmpty()) return
+        restartLiked = false
+        vm.playLiked(p, rows, picked, shuffled)
+    }
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val drag = rememberPlaylistDrag(listState)
@@ -961,7 +990,11 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                     // Sorting stays in reach in the header (the search field above the songs is folded).
                     if (findable && all.isNotEmpty()) {
                         Spacer(Modifier.width(16.dp))
-                        TrackSortButton(sort) { sort = it; TrackOrder.save(ctx, p.uri, it) }
+                        TrackSortButton(sort, custom = p.type != "liked") {
+                            sort = it
+                            restartLiked = p.type == "liked"
+                            TrackOrder.save(ctx, p.uri, it)
+                        }
                     }
                     // "Move": a handle on each song, to put them in another order (again: done).
                     if (canMove) {
@@ -1028,6 +1061,7 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                                 when {
                                     isThisContext && playing -> SongPlayer.pause()
                                     isThisContext -> SongPlayer.play()
+                                    p.type == "liked" -> playLiked()
                                     p.tracks.isNotEmpty() && SmartShuffle.on.value == p.uri -> vm.playSmart(p, null)
                                     p.tracks.isNotEmpty() -> vm.play(p, if (shuffle) p.tracks.random() else sort.apply(p.tracks).first(), sort)
                                 }
@@ -1067,7 +1101,7 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
             androidx.compose.animation.AnimatedVisibility(extrasShown || find.isNotBlank(), enter = UnfoldIn, exit = FoldOut) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
                 com.music.spotui.ui.components.FindInListField(
-                    find, { find = it },
+                    find, { find = it; restartLiked = p.type == "liked" },
                     stringResource(if (p.type == "liked") R.string.find_in_context_edit_text_liked_songs_hint else R.string.find_in_context_edit_text_playlist_hint),
                     Modifier.weight(1f),
                 )
@@ -1091,7 +1125,14 @@ private fun ContextContent(navController: NavController, vm: ContextViewModel, p
                 saved = com.music.spotui.di.trackSaved(song.spotifyTrackId, saved),
                 offline = com.music.spotui.data.offline.OfflineStore.statusOf(song.spotifyTrackId),
                 addedBy = vm.adders.value.let { a -> a["row:" + song.rowUid] ?: a["song:" + song.spotifyTrackId] },
-                onClick = { dismissKeyboard(); if (SmartShuffle.on.value == p.uri) vm.playSmart(p, song) else vm.play(p, song, sort) },
+                onClick = {
+                    dismissKeyboard()
+                    when {
+                        p.type == "liked" -> playLiked(song)
+                        SmartShuffle.on.value == p.uri -> vm.playSmart(p, song)
+                        else -> vm.play(p, song, sort)
+                    }
+                },
                 onMore = { menuSong = song },
                 onSaved = { savedInSong = song },
                 handle = if (reordering) drag.handle(song.rowUid) else null,
@@ -1571,63 +1612,9 @@ object SmartShuffle {
     }
 }
 
-/** Text order for sorting (accents ignored): one collator per thread, none is thread-safe. */
-private val textOrder = ThreadLocal.withInitial {
-    java.text.Collator.getInstance().apply { strength = java.text.Collator.PRIMARY }
-}
-
-enum class TrackSort(val label: Int) {
-    CUSTOM(R.string.your_library_sort_order_custom),
-    TITLE(R.string.track_sort_title),
-    ARTIST(R.string.track_sort_artist),
-    ALBUM(R.string.track_sort_album),
-    DURATION(R.string.track_sort_duration),
-    ADDED(R.string.track_sort_added);
-
-    internal fun natural(songs: List<SongsModel>): List<SongsModel> {
-        // One collator per thread: sorting runs at every sort change, not at every recomposition.
-        val text = textOrder.get()
-        return when (this) {
-            CUSTOM -> songs
-            TITLE -> songs.sortedWith { a, b -> text.compare(a.title, b.title) }
-            ARTIST -> songs.sortedWith { a, b -> text.compare(a.singer, b.singer).takeIf { it != 0 } ?: text.compare(a.album, b.album) }
-            ALBUM -> songs.sortedWith { a, b -> text.compare(a.album, b.album).takeIf { it != 0 } ?: text.compare(a.title, b.title) }
-            DURATION -> songs.sortedBy { it.durationMs }
-            // Newest first; ISO 8601 dates sort as text.
-            ADDED -> songs.sortedByDescending { it.addedAt }
-        }
-    }
-}
-
-/**
- * A sort and its direction. [reversed] flips the sort's natural order (A to Z, shortest
- * first, newest first for date added); for [TrackSort.CUSTOM], the playlist from its end.
- */
-data class TrackOrder(val sort: TrackSort = TrackSort.CUSTOM, val reversed: Boolean = false) {
-    val isCustom get() = sort == TrackSort.CUSTOM && !reversed
-
-    fun apply(songs: List<SongsModel>): List<SongsModel> = sort.natural(songs).let { if (reversed) it.asReversed() else it }
-
-    companion object {
-        private const val PREFS = "track_sort"
-
-        fun load(context: android.content.Context, uri: String): TrackOrder {
-            val v = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).getString(uri, null) ?: return TrackOrder()
-            val sort = TrackSort.entries.firstOrNull { it.name == v.substringBefore(':') } ?: return TrackOrder()
-            return TrackOrder(sort, v.endsWith(":reversed"))
-        }
-
-        fun save(context: android.content.Context, uri: String, order: TrackOrder) {
-            context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE).edit().apply {
-                if (order == TrackOrder()) remove(uri) else putString(uri, order.sort.name + if (order.reversed) ":reversed" else "")
-            }.apply()
-        }
-    }
-}
-
 /** Spotify's sort menu: picking the sort already chosen flips its direction (the arrow shows it). */
 @Composable
-private fun TrackSortButton(sort: TrackOrder, onSort: (TrackOrder) -> Unit) {
+private fun TrackSortButton(sort: TrackOrder, custom: Boolean, onSort: (TrackOrder) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Icon(androidx.compose.material.icons.Icons.Default.SwapVert,
@@ -1637,11 +1624,11 @@ private fun TrackSortButton(sort: TrackOrder, onSort: (TrackOrder) -> Unit) {
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = tone(0xFF282828)) {
             Text(stringResource(R.string.filter_and_sort_sort_section_title), color = AppMuted, fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-            TrackSort.entries.forEach { option ->
+            TrackSort.entries.filter { custom || it != TrackSort.CUSTOM }.forEach { option ->
                 androidx.compose.material3.DropdownMenuItem(
                     text = { Text(stringResource(option.label), color = if (option == sort.sort) SpotifyGreen else AppText) },
                     trailingIcon = if (option == sort.sort) { {
-                        Icon(if (sort.reversed) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                        Icon(if (sort.descending) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
                             contentDescription = null, tint = SpotifyGreen, modifier = Modifier.size(18.dp))
                     } } else null,
                     onClick = { open = false; onSort(if (option == sort.sort) sort.copy(reversed = !sort.reversed) else TrackOrder(option)) },

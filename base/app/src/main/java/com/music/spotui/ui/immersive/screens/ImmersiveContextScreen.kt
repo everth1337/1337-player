@@ -231,7 +231,8 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     val shuffle = playerVm.shuffleState.value
     val np by SongPlayer.nowPlaying
     val isLiked = p.type == "liked" || p.type == "liked-artist"
-    val isThisContext = np.contextUri == p.uri || (isLiked && np.contextUri.contains(":collection"))
+    var restartLiked by remember(p.uri) { mutableStateOf(false) }
+    val isThisContext = !restartLiked && (np.contextUri == p.uri || (isLiked && np.contextUri.contains(":collection")))
     val contextSaved by vm.contextSaved
     val savedTracks by vm.savedUris
     val smart = SmartShuffle.on.value == p.uri
@@ -396,11 +397,17 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
         }
     }
     val rows = shown.first
+    fun playLiked(picked: SongsModel? = null, shuffled: Boolean = shuffle) {
+        if (rows.isEmpty()) return
+        restartLiked = false
+        vm.playLiked(p, rows, picked, shuffled)
+    }
 
     // What the Play pill does: pause / resume this list, else start it (smart shuffle if it is on).
     fun onPlay() = when {
         isThisContext && playing -> SongPlayer.pause()
         isThisContext -> SongPlayer.play()
+        p.type == "liked" -> playLiked()
         p.tracks.isNotEmpty() && SmartShuffle.on.value == p.uri -> vm.playSmart(p, null)
         p.tracks.isNotEmpty() -> vm.play(p, if (shuffle) p.tracks.random() else sort.apply(p.tracks).first(), sort)
         else -> Unit
@@ -420,6 +427,12 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
     // Discord: in 2.2.0 a tap while the list played only turned shuffle on or off). Turning
     // shuffle off is the player's shuffle button; smart shuffle has its own button under the pill.
     fun onShuffle() {
+        if (p.type == "liked") {
+            if (rows.isEmpty()) return
+            playerVm.updateShuffleState(true)
+            playLiked(shuffled = true)
+            return
+        }
         if (p.tracks.isEmpty()) return
         if (smart) return vm.playSmart(p, null)
         playerVm.updateShuffleState(true)
@@ -445,7 +458,7 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
         if (finding) {
             listState.animateScrollToItem(FIND_ITEM_INDEX, -findStop)
             runCatching { findFocus.requestFocus() }
-        } else find = ""
+        } else { find = ""; restartLiked = p.type == "liked" }
     }
 
     val refreshing by vm.refreshing
@@ -502,7 +515,7 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
             if (finding && findable) item(key = "find") {
                 ImmersiveSearchField(
                     query = find,
-                    onQueryChange = { find = it },
+                    onQueryChange = { find = it; restartLiked = p.type == "liked" },
                     onSubmit = {},
                     focusRequester = findFocus,
                     placeholder = stringResource(
@@ -533,7 +546,13 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                             current = song.id == currentSongId,
                             onClick = {
                                 dismissKeyboard()
-                                tapper.tap(song) { if (SmartShuffle.on.value == p.uri) vm.playSmart(p, song) else vm.play(p, song, sort) }
+                                tapper.tap(song) {
+                                    when {
+                                        p.type == "liked" -> playLiked(song)
+                                        SmartShuffle.on.value == p.uri -> vm.playSmart(p, song)
+                                        else -> vm.play(p, song, sort)
+                                    }
+                                }
                             },
                             onMore = { menuSong = song },
                             trackNumber = if (numbered) index + 1 else null,
@@ -626,8 +645,13 @@ private fun ImmersiveContextContent(navController: NavController, vm: ContextVie
                         SortMenu(
                             open = sortMenu,
                             sort = sort,
+                            custom = p.type != "liked",
                             onDismiss = { sortMenu = false },
-                            onSort = { sort = it; TrackOrder.save(context, p.uri, it) },
+                            onSort = {
+                                sort = it
+                                restartLiked = p.type == "liked"
+                                TrackOrder.save(context, p.uri, it)
+                            },
                         )
                     }
                     if (p.type == "playlist" || p.type == "album" || p.type == "liked" || p.type == "liked-artist") ImmersiveBarAction(
@@ -904,14 +928,14 @@ private fun DownloadCircle(downloaded: Int, total: Int, busy: Boolean, kept: Boo
 
 /** The sort menu: picking the sort already chosen flips its direction (the arrow shows it). */
 @Composable
-private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onSort: (TrackOrder) -> Unit) {
+private fun SortMenu(open: Boolean, sort: TrackOrder, custom: Boolean, onDismiss: () -> Unit, onSort: (TrackOrder) -> Unit) {
     DropdownMenu(expanded = open, onDismissRequest = onDismiss, containerColor = Immersive.Raised) {
         Text(
             stringResource(R.string.filter_and_sort_sort_section_title),
             style = Immersive.Caption,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
-        TrackSort.entries.forEach { option ->
+        TrackSort.entries.filter { custom || it != TrackSort.CUSTOM }.forEach { option ->
             DropdownMenuItem(
                 text = {
                     Text(
@@ -922,7 +946,7 @@ private fun SortMenu(open: Boolean, sort: TrackOrder, onDismiss: () -> Unit, onS
                 trailingIcon = if (option == sort.sort) {
                     {
                         Icon(
-                            if (sort.reversed) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                            if (sort.descending) Icons.Rounded.ArrowDownward else Icons.Rounded.ArrowUpward,
                             contentDescription = null, tint = Immersive.Accent, modifier = Modifier.size(18.dp),
                         )
                     }

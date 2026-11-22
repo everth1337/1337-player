@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,23 +78,19 @@ import com.music.spotui.ui.theme.AppBackground
 fun DownloadsScreen(navController: NavController) {
     val context = LocalContext.current
     val title = stringResource(R.string.collection_downloaded)
-    // Snapshot reads: the list follows downloads as they finish. Derived, so a progress tick (which
-    // changes no list) leaves the sorted lists and the counts alone instead of rebuilding them.
-    val tracks by remember { derivedStateOf { OfflineStore.tracks.values.sortedByDescending { it.addedAt } } }
-    // Shown by where they were downloaded from: each album or playlist downloaded as a whole is one
-    // row (its songs are on its own page), newest first; the songs downloaded on their own follow.
+    var order by remember { mutableStateOf(TrackOrder.load(context, TrackOrder.DOWNLOADS)) }
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    var showLists by rememberSaveable { mutableStateOf(false) }
+    var restart by rememberSaveable { mutableStateOf(false) }
+    val tracks by remember {
+        derivedStateOf { order.downloads(OfflineStore.tracks.values.sortedBy { it.trackId }) }
+    }
     val lists by remember {
         derivedStateOf {
             com.music.spotui.data.offline.OfflineCollections.collections.values.mapNotNull { c ->
                 val mine = tracks.filter { it.trackId in c.trackIds }
                 if (mine.isEmpty()) null else c to mine
             }.sortedByDescending { (_, mine) -> mine.maxOf { it.addedAt } }
-        }
-    }
-    val singles by remember {
-        derivedStateOf {
-            val inLists = lists.flatMapTo(HashSet()) { (_, mine) -> mine.map { it.trackId } }
-            tracks.filter { it.trackId !in inLists }
         }
     }
     val waiting by remember { derivedStateOf { OfflineDownloader.requests.values.filter { !OfflineStore.isDownloaded(it.trackId) } } }
@@ -107,14 +104,16 @@ fun DownloadsScreen(navController: NavController) {
         }
     }
     val np by SongPlayer.nowPlaying
-    val playingHere = LocalPlayer.active.value && LocalPlayer.contextName == title
+    val playingHere = LocalPlayer.active.value && LocalPlayer.contextUri == TrackOrder.DOWNLOADS && !restart
     var menuSong by remember { mutableStateOf<SongsModel?>(null) }
     menuSong?.let { sel ->
         com.music.spotui.ui.components.SongOptionsSheet(song = sel, navController = navController, context = context, onDismiss = { menuSong = null })
     }
     fun play(index: Int, shuffle: Boolean = false) {
         if (tracks.isEmpty()) return
-        LocalPlayer.play(tracks.map(OfflineStore::toLocalTrack), index, shuffle = shuffle, context = title)
+        restart = false
+        LocalPlayer.play(tracks.map(OfflineStore::toLocalTrack), index, shuffle = shuffle,
+            context = title, contextUri = TrackOrder.DOWNLOADS, includeSpotifyQueue = false)
     }
 
     Box(Modifier.fillMaxSize().background(AppBackground)) {
@@ -168,8 +167,19 @@ fun DownloadsScreen(navController: NavController) {
                     }
                 }
             }
-            // No extension gives download files: say it where downloads would fail.
-            if (!com.music.spotui.extensions.Extensions.hasDownloadSource()) item(key = "source") {
+            if (tracks.isNotEmpty()) item(key = "downloads:sort") {
+                DownloadSortButton(order, onChange = {
+                    order = it
+                    restart = true
+                    TrackOrder.save(context, TrackOrder.DOWNLOADS, it)
+                }, modifier = Modifier.padding(horizontal = 16.dp))
+            }
+            if (waiting.isNotEmpty()) item(key = "downloads:queue") {
+                androidx.compose.material3.TextButton(onClick = { showQueue = !showQueue }, modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(stringResource(R.string.player_download_queue_title, waiting.size))
+                }
+            }
+            if (tracks.isEmpty() && !com.music.spotui.extensions.Extensions.hasDownloadSource()) item(key = "source") {
                 Text(
                     stringResource(R.string.downloads_need_source),
                     color = AppText, fontSize = 14.sp, lineHeight = 19.sp,
@@ -180,7 +190,7 @@ fun DownloadsScreen(navController: NavController) {
                 )
             }
             // A25: one tap empties the queue; the songs already downloaded stay untouched.
-            if (stoppable > 0) item(key = "stop_all") {
+            if (showQueue && stoppable > 0) item(key = "stop_all") {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
@@ -198,7 +208,7 @@ fun DownloadsScreen(navController: NavController) {
                 }
             }
             // Songs still on their way (or that could not be downloaded).
-            items(waiting, key = { "w:" + it.trackId }) { r ->
+            if (showQueue) items(waiting, key = { "w:" + it.trackId }) { r ->
                 val status = OfflineStore.status[r.trackId]
                 val problem = status == OfflineStatus.Failed || status == OfflineStatus.Unavailable
                 Row(
@@ -230,8 +240,12 @@ fun DownloadsScreen(navController: NavController) {
                         modifier = Modifier.size(24.dp).pressable(0.96f) { OfflineDownloader.cancel(r.trackId) })
                 }
             }
-            if (lists.isNotEmpty()) item(key = "lists_title") { SectionTitle(stringResource(R.string.downloads_lists)) }
-            items(lists, key = { "l:" + it.first.uri }) { (c, mine) ->
+            if (lists.isNotEmpty()) item(key = "lists_title") {
+                androidx.compose.material3.TextButton(onClick = { showLists = !showLists }, modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Text(stringResource(R.string.downloads_lists))
+                }
+            }
+            if (showLists) items(lists, key = { "l:" + it.first.uri }) { (c, mine) ->
                 val kind = when (c.type) {
                     "album" -> stringResource(R.string.downloads_kind_album)
                     "liked" -> stringResource(R.string.downloads_kind_liked)
@@ -267,10 +281,8 @@ fun DownloadsScreen(navController: NavController) {
                     }
                 }
             }
-            if (lists.isNotEmpty() && singles.isNotEmpty()) item(key = "singles_title") { SectionTitle(stringResource(R.string.downloads_singles)) }
-            itemsIndexed(singles, key = { _, t -> t.trackId }) { _, t ->
-                val i = tracks.indexOf(t)
-                val current = LocalPlayer.active.value && np.uri == "spotify:track:${t.trackId}"
+            itemsIndexed(tracks, key = { _, t -> t.trackId }) { i, t ->
+                val current = LocalPlayer.active.value && np.uri == "local:${OfflineStore.localIdOf(t.trackId)}"
                 com.music.spotui.ui.components.SwipeToRemove(t.trackId, onRemove = {
                     val gone = com.music.spotui.data.offline.OfflineCollections.removeSong(t.trackId)
                     android.widget.Toast.makeText(context, if (gone) context.getString(R.string.toast_undownload) else com.music.spotui.data.offline.OfflineCollections.keptMessage(context, t.trackId), android.widget.Toast.LENGTH_SHORT).show()
@@ -306,10 +318,4 @@ fun DownloadsScreen(navController: NavController) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.accessibility_navigate_back), tint = AppText)
         }
     }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, color = AppText, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
 }

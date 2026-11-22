@@ -429,7 +429,7 @@ object LocalPlayer {
      * queue, it goes on after its last song as Spotify's does (see continueIfLast). [paused]: the song
      * is put there paused (another source picked for it while it was paused), the user's play starts it.
      */
-    fun play(list: List<LocalTrack>, index: Int, shuffle: Boolean = false, context: String? = null, contextUri: String = "", startMs: Long = 0L, continues: Boolean = false, paused: Boolean = false) {
+    fun play(list: List<LocalTrack>, index: Int, shuffle: Boolean = false, context: String? = null, contextUri: String = "", startMs: Long = 0L, continues: Boolean = false, paused: Boolean = false, includeSpotifyQueue: Boolean = true) {
         if (list.isEmpty()) return
         // Another song picked: repeat once was for the song left.
         val shown = SongPlayer.nowPlaying.value.uri.substringAfterLast(':')
@@ -444,7 +444,8 @@ object LocalPlayer {
         val isStation = list.singleOrNull()?.isRadio == true
         radioRetries = 0; handler.removeCallbacks(radioSteady)
         // Spotify's queued songs (the account's: maybe queued on another device or install) play first.
-        val (all, fromSpotify) = if (isStation) list to emptyList<LocalTrack>() else QueueSync.withSpotifyQueue(list, index.coerceIn(0, list.lastIndex))
+        val (all, fromSpotify) = if (isStation || !includeSpotifyQueue) list to emptyList<LocalTrack>()
+        else QueueSync.withSpotifyQueue(list, index.coerceIn(0, list.lastIndex))
         tracks.clear(); tracks.addAll(all); unshuffled = null
         // An index kept from fading belonged to the list before: this one fades from its first song.
         noFadeFor = -1
